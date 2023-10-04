@@ -1687,12 +1687,7 @@ func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Req
 			return
 		}
 	case authTypeStreamingUnsignedTrailer:
-		// Initialize stream chunked reader with optional trailers.
-		reader, s3Err = newUnsignedV4ChunkedReader(r, true)
-		if s3Err != ErrNone {
-			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Err), r.URL)
-			return
-		}
+		// No special treatment
 	case authTypeSignedV2, authTypePresignedV2:
 		s3Err = isReqAuthenticatedV2(r)
 		if s3Err != ErrNone {
@@ -1748,9 +1743,11 @@ func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Req
 			writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL)
 			return
 		}
-		if err = actualReader.AddChecksum(r, false); err != nil {
-			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrInvalidChecksum), r.URL)
-			return
+		if rAuthType != authTypeStreamingUnsignedTrailer {
+			if err = actualReader.AddChecksum(r, false); err != nil {
+				writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrInvalidChecksum), r.URL)
+				return
+			}
 		}
 		// Set compression metrics.
 		var s2c io.ReadCloser
@@ -1781,9 +1778,11 @@ func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Req
 		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL)
 		return
 	}
-	if err := hashReader.AddChecksum(r, size < 0); err != nil {
-		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrInvalidChecksum), r.URL)
-		return
+	if rAuthType != authTypeStreamingUnsignedTrailer {
+		if err := hashReader.AddChecksum(r, size < 0); err != nil {
+			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrInvalidChecksum), r.URL)
+			return
+		}
 	}
 
 	rawReader := hashReader

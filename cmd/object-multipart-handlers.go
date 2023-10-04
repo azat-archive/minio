@@ -666,12 +666,7 @@ func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http
 			return
 		}
 	case authTypeStreamingUnsignedTrailer:
-		// Initialize stream signature verifier.
-		reader, s3Error = newUnsignedV4ChunkedReader(r, true)
-		if s3Error != ErrNone {
-			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL)
-			return
-		}
+		// No special treatment
 	case authTypeSignedV2, authTypePresignedV2:
 		if s3Error = isReqAuthenticatedV2(r); s3Error != ErrNone {
 			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL)
@@ -720,9 +715,11 @@ func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http
 			writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL)
 			return
 		}
-		if err = actualReader.AddChecksum(r, false); err != nil {
-			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrInvalidChecksum), r.URL)
-			return
+		if rAuthType != authTypeStreamingUnsignedTrailer {
+			if err = actualReader.AddChecksum(r, false); err != nil {
+				writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrInvalidChecksum), r.URL)
+				return
+			}
 		}
 
 		// Set compression metrics.
@@ -742,9 +739,11 @@ func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	if err := hashReader.AddChecksum(r, size < 0); err != nil {
-		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrInvalidChecksum), r.URL)
-		return
+	if rAuthType != authTypeStreamingUnsignedTrailer {
+		if err := hashReader.AddChecksum(r, size < 0); err != nil {
+			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrInvalidChecksum), r.URL)
+			return
+		}
 	}
 
 	pReader := NewPutObjReader(hashReader)
@@ -803,9 +802,11 @@ func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http
 			writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL)
 			return
 		}
-		if err := hashReader.AddChecksum(r, true); err != nil {
-			writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrInvalidChecksum), r.URL)
-			return
+		if rAuthType != authTypeStreamingUnsignedTrailer {
+			if err := hashReader.AddChecksum(r, true); err != nil {
+				writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrInvalidChecksum), r.URL)
+				return
+			}
 		}
 
 		pReader, err = pReader.WithEncryption(hashReader, &objectEncryptionKey)
